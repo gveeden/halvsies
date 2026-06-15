@@ -41,7 +41,8 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
   const { user } = useAuth();
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [splitType, setSplitType] = useState<"SHARES" | "EXACT" | "PERCENTAGE">("SHARES");
+  const [dateStr, setDateStr] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [splitType, setSplitType] = useState<"EXACT" | "PERCENTAGE" | "SHARES">("SHARES");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const currencySymbol = getCurrencySymbol(currency);
@@ -55,6 +56,13 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
       if (expenseToEdit) {
         setDescription(expenseToEdit.description);
         setAmount(expenseToEdit.amount.toString());
+        if (expenseToEdit.date?.toDate) {
+          const d = expenseToEdit.date.toDate();
+          setDateStr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+        } else if (expenseToEdit.createdAt?.toDate) {
+          const d = expenseToEdit.createdAt.toDate();
+          setDateStr(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+        }
         setSplitType(expenseToEdit.splitType as any);
 
         const initialExact: Record<string, string> = {};
@@ -87,6 +95,7 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
         // Default new expense
         setDescription("");
         setAmount("");
+        setDateStr(new Date().toISOString().split("T")[0]);
         setSplitType("SHARES");
         setExactAmounts({});
         setPercentages({});
@@ -231,10 +240,15 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
         }
       }
 
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const expenseDate = new Date(year, month - 1, day, 12, 0, 0);
+      const dateTimestamp = Timestamp.fromDate(expenseDate);
+
       const expenseData = {
         groupId,
         description: description.trim(),
         amount: numAmount,
+        date: dateTimestamp,
         paidBy: expenseToEdit ? expenseToEdit.paidBy : user.uid, // Keep original payer if editing
         splitType,
         splits,
@@ -253,7 +267,6 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
       } else {
         await addDoc(collection(db, "expenses"), {
           ...expenseData,
-          date: serverTimestamp(),
           createdAt: serverTimestamp(),
           createdBy: user.uid
         });
@@ -306,6 +319,17 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
               onChange={(e) => setAmount(e.target.value)}
               className={`w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all font-mono text-lg ${noSpinnersClass}`}
               placeholder="0.00"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Date Paid</label>
+            <input 
+              type="date"
+              value={dateStr}
+              onChange={(e) => setDateStr(e.target.value)}
+              className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              required
             />
           </div>
 

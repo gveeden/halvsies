@@ -98,8 +98,13 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
     result.sort((a, b) => {
       let comparison = 0;
       if (sortBy === "date") {
-        const dateA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-        const dateB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        const getMillis = (obj: any) => {
+          if (obj?.date?.toMillis) return obj.date.toMillis();
+          if (obj?.createdAt?.toMillis) return obj.createdAt.toMillis();
+          return 0;
+        };
+        const dateA = getMillis(a);
+        const dateB = getMillis(b);
         comparison = dateA - dateB;
       } else if (sortBy === "amount") {
         comparison = a.amount - b.amount;
@@ -220,12 +225,12 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
   const graphData = useMemo(() => {
     const dailySpend: Record<string, number> = {};
     const sortedExpenses = [...expenses].sort((a, b) => {
-      const dateA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-      const dateB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      const dateA = a.date?.toMillis ? a.date.toMillis() : (a.createdAt?.toMillis ? a.createdAt.toMillis() : 0);
+      const dateB = b.date?.toMillis ? b.date.toMillis() : (b.createdAt?.toMillis ? b.createdAt.toMillis() : 0);
       return dateA - dateB;
     });
     sortedExpenses.forEach(e => {
-      const dateObj = e.createdAt?.toDate ? e.createdAt.toDate() : new Date();
+      const dateObj = e.date?.toDate ? e.date.toDate() : (e.createdAt?.toDate ? e.createdAt.toDate() : new Date());
       const dayStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       dailySpend[dayStr] = (dailySpend[dayStr] || 0) + e.amount;
     });
@@ -497,7 +502,7 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
             ) : (
               <div className="space-y-3">
                 {filteredAndSortedExpenses.map((expense) => {
-                  const dateStr = expense.createdAt?.toDate ? expense.createdAt.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Just now';
+                  const dateStr = expense.date?.toDate ? expense.date.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : expense.createdAt?.toDate ? expense.createdAt.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Just now';
                   const isYou = expense.paidBy === user?.uid;
                   const payerName = profiles[expense.paidBy]?.displayName || profiles[expense.paidBy]?.email || "Unknown User";
 
