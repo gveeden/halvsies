@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
@@ -8,6 +8,7 @@ import { doc, onSnapshot, collection, query, where, orderBy, getDoc, deleteDoc }
 import Link from "next/link";
 import AddExpenseModal from "@/components/AddExpenseModal";
 import EditGroupModal from "@/components/EditGroupModal";
+import InviteModal from "@/components/InviteModal";
 import { calculateSimplifiedDebts, SimplifiedDebt } from "@/lib/settleDebts";
 import { getCurrencySymbol } from "@/lib/currency";
 
@@ -59,7 +60,53 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
   const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
   
   const [isEditGroupModalOpen, setIsEditGroupModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"expenses" | "balances">("expenses");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "amount">("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  const filteredAndSortedExpenses = useMemo(() => {
+    let result = [...expenses];
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(e => {
+        // Match description
+        if (e.description.toLowerCase().includes(query)) return true;
+        
+        // Match payer name
+        const isYouPayer = e.paidBy === user?.uid;
+        const payerName = isYouPayer ? "you" : (profiles[e.paidBy]?.displayName?.toLowerCase() || "");
+        if (payerName.includes(query)) return true;
+
+        // Match split members
+        const splitMembersMatch = e.splits.some(split => {
+          const isYouSplit = split.userId === user?.uid;
+          const splitName = isYouSplit ? "you" : (profiles[split.userId]?.displayName?.toLowerCase() || "");
+          return splitName.includes(query);
+        });
+        if (splitMembersMatch) return true;
+
+        return false;
+      });
+    }
+
+    result.sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === "date") {
+        const dateA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const dateB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        comparison = dateA - dateB;
+      } else if (sortBy === "amount") {
+        comparison = a.amount - b.amount;
+      }
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
+
+    return result;
+  }, [expenses, searchQuery, sortBy, sortOrder, profiles, user?.uid]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -200,6 +247,13 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
             </div>
             
             <button 
+              onClick={() => setIsInviteModalOpen(true)}
+              className="ml-2 text-sm bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 font-semibold py-1.5 px-3 rounded-full transition-colors border border-emerald-500/20"
+            >
+              Invite
+            </button>
+            
+            <button 
               onClick={() => setIsEditGroupModalOpen(true)}
               className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-slate-300 transition-colors"
               title="Group Settings"
@@ -239,7 +293,7 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
 
         {activeTab === "expenses" && (
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <h3 className="font-semibold text-lg">Recent Expenses</h3>
               <button
                 onClick={handleOpenAddExpense}
@@ -249,24 +303,66 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
               </button>
             </div>
 
+            <div className="flex flex-col sm:flex-row gap-3 mb-6 bg-slate-900/50 p-3 rounded-xl border border-white/5">
+              <div className="flex-1 relative">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search expenses..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-800 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "date" | "amount")}
+                  className="bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="date">Sort by Date</option>
+                  <option value="amount">Sort by Amount</option>
+                </select>
+                <button
+                  onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+                  className="bg-slate-800 border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors"
+                  title={`Change to ${sortOrder === "asc" ? "descending" : "ascending"}`}
+                >
+                  {sortOrder === "asc" ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
             {expensesLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map(i => (
                   <div key={i} className="animate-pulse bg-slate-800/50 rounded-xl h-20 border border-white/5"></div>
                 ))}
               </div>
-            ) : expenses.length === 0 ? (
+            ) : filteredAndSortedExpenses.length === 0 ? (
               <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-10 text-center">
                 <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
                 </div>
-                <p className="text-slate-400">No expenses yet. Add one to get started!</p>
+                <p className="text-slate-400">
+                  {searchQuery ? "No expenses match your search." : "No expenses yet. Add one to get started!"}
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {expenses.map((expense) => {
+                {filteredAndSortedExpenses.map((expense) => {
                   const dateStr = expense.createdAt?.toDate ? expense.createdAt.toDate().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Just now';
                   const isYou = expense.paidBy === user?.uid;
                   const payerName = isYou ? "You" : (profiles[expense.paidBy]?.displayName?.split(' ')[0] || "Someone");
@@ -406,6 +502,13 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
         currentName={group.name}
         currentDescription={group.description}
         currentCurrency={group.currency}
+      />
+
+      <InviteModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        groupId={groupId}
+        groupName={group.name}
       />
     </div>
   );

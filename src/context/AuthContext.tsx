@@ -5,7 +5,6 @@ import {
   User, 
   onAuthStateChanged, 
   signInWithPopup, 
-  signInAnonymously, 
   signOut as firebaseSignOut,
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
@@ -18,7 +17,6 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
-  signInAsGuest: () => Promise<void>;
   sendMagicLink: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -27,7 +25,6 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   signInWithGoogle: async () => {},
-  signInAsGuest: async () => {},
   sendMagicLink: async () => {},
   signOut: async () => {},
 });
@@ -90,15 +87,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const signInAsGuest = async () => {
-    try {
-      await signInAnonymously(auth);
-    } catch (error) {
-      console.error("Guest sign in error", error);
-      throw error;
-    }
-  };
-
   const sendMagicLink = async (email: string) => {
     const actionCodeSettings = {
       url: window.location.origin + '/login',
@@ -122,7 +110,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signInAsGuest, sendMagicLink, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, sendMagicLink, signOut }}>
       {children}
     </AuthContext.Provider>
   );

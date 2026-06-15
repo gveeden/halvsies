@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from "firebase/firestore";
 import CreateGroupModal from "@/components/CreateGroupModal";
+import ProfileModal from "@/components/ProfileModal";
 import Link from "next/link";
 
 interface Group {
@@ -21,12 +22,27 @@ export default function DashboardPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [displayName, setDisplayName] = useState("");
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
   }, [user, loading, router]);
+
+  // Fetch real-time display name from users collection since AuthContext might have stale data
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().displayName) {
+        setDisplayName(docSnap.data().displayName);
+      } else {
+        setDisplayName(user.displayName || "Friend");
+      }
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -72,9 +88,13 @@ export default function DashboardPage() {
             <span className="font-bold tracking-tight text-xl">Halvsies</span>
           </Link>
           <div className="flex items-center gap-4">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-sm font-bold uppercase shadow-inner">
-              {user?.displayName?.[0] || user?.email?.[0] || "U"}
-            </div>
+            <button 
+              onClick={() => setIsProfileModalOpen(true)}
+              className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-sm font-bold uppercase shadow-inner hover:ring-2 ring-emerald-500 transition-all"
+              title="Edit Profile"
+            >
+              {displayName?.[0] || user?.email?.[0] || "U"}
+            </button>
             <button onClick={signOut} className="text-sm font-medium text-slate-400 hover:text-white transition-colors">
               Sign out
             </button>
@@ -84,7 +104,7 @@ export default function DashboardPage() {
 
       <main className="max-w-5xl mx-auto px-4 pt-8">
         <div className="mb-10">
-          <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.displayName?.split(' ')[0] || 'Friend'}!</h1>
+          <h1 className="text-3xl font-bold mb-2">Welcome back, {displayName.split(' ')[0]}!</h1>
           <p className="text-slate-400">Here's where you stand.</p>
         </div>
 
@@ -158,6 +178,10 @@ export default function DashboardPage() {
         onSuccess={() => {
           // The onSnapshot listener will automatically update the UI
         }}
+      />
+      <ProfileModal 
+        isOpen={isProfileModalOpen} 
+        onClose={() => setIsProfileModalOpen(false)} 
       />
     </div>
   );
