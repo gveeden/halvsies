@@ -38,7 +38,7 @@ export default function DashboardPage() {
       if (docSnap.exists() && docSnap.data().displayName) {
         setDisplayName(docSnap.data().displayName);
       } else {
-        setDisplayName(user.displayName || "Friend");
+        setDisplayName(user.displayName || "");
       }
     });
     return () => unsubscribe();
@@ -104,7 +104,7 @@ export default function DashboardPage() {
 
       <main className="max-w-5xl mx-auto px-4 pt-8">
         <div className="mb-10">
-          <h1 className="text-3xl font-bold mb-2">Welcome back, {displayName.split(' ')[0]}!</h1>
+          <h1 className="text-3xl font-bold mb-2">Welcome back, {displayName ? displayName.split(' ')[0] : (user?.email?.split('@')[0] || "Friend")}!</h1>
           <p className="text-slate-400">Here's where you stand.</p>
         </div>
 

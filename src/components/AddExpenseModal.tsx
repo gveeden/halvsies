@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, serverTimestamp, arrayUnion, Timestamp } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { getCurrencySymbol } from "@/lib/currency";
 
@@ -185,12 +185,20 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
       };
 
       if (expenseToEdit) {
-        await updateDoc(doc(db, "expenses", expenseToEdit.id), expenseData);
+        await updateDoc(doc(db, "expenses", expenseToEdit.id), {
+          ...expenseData,
+          history: arrayUnion({
+            action: 'edited',
+            userId: user.uid,
+            timestamp: Timestamp.now()
+          })
+        });
       } else {
         await addDoc(collection(db, "expenses"), {
           ...expenseData,
           date: serverTimestamp(),
           createdAt: serverTimestamp(),
+          createdBy: user.uid
         });
       }
       
@@ -274,10 +282,10 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
               {members.map(uid => (
                 <div key={uid} className="flex items-center justify-between bg-slate-800/50 p-2 rounded-lg border border-white/5">
                   <div className="flex items-center gap-2">
-                     <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-[10px] font-bold uppercase">
-                        {profiles[uid]?.displayName?.[0] || "U"}
-                     </div>
-                     <span className="text-sm font-medium">{profiles[uid]?.displayName || "Unknown User"}</span>
+                      <div className="w-8 h-8 rounded-full border-2 border-slate-900 bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-bold uppercase">
+                        {profiles[uid]?.displayName?.[0] || profiles[uid]?.email?.[0] || "U"}
+                      </div>
+                      <span className="text-sm font-medium">{profiles[uid]?.displayName || profiles[uid]?.email || "Unknown User"}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     {splitType === "EXACT" && <span className="text-slate-500 text-sm">{currencySymbol}</span>}

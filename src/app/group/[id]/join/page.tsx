@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, use } from "react";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, arrayUnion } from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import Link from "next/link";
 
 interface GroupData {
@@ -17,7 +17,7 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
   const params = use(props.params);
   const groupId = params.id;
   
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const router = useRouter();
   
   const [group, setGroup] = useState<GroupData | null>(null);
@@ -39,11 +39,10 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
         setFetchError("Unable to fetch group details.");
       }
     };
-    
-    if (groupId) {
+    if (groupId && !loading) {
       fetchGroup();
     }
-  }, [groupId]);
+  }, [groupId, loading]);
 
   useEffect(() => {
     // If not logged in, we set the pending join so the login page knows where to send them back
@@ -59,9 +58,13 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
     
     try {
       const groupRef = doc(db, "groups", groupId);
-      await updateDoc(groupRef, {
+      const updates: any = {
         members: arrayUnion(user.uid)
-      });
+      };
+      if (user.email) {
+        updates.pendingInvites = arrayRemove(user.email.toLowerCase());
+      }
+      await updateDoc(groupRef, updates);
       
       // Clear pending join just in case
       window.localStorage.removeItem('pendingGroupJoin');
@@ -75,7 +78,15 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
     }
   };
 
-  if (loading || !group) {
+  const handleSwitchAccount = async () => {
+    if (signOut) {
+      await signOut();
+    }
+    window.localStorage.setItem('pendingGroupJoin', groupId);
+    router.push("/login");
+  };
+
+  if (loading || (!group && !fetchError) || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div>
@@ -84,7 +95,7 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
   }
 
   // If already a member
-  if (user && group.members.includes(user.uid)) {
+  if (user && group?.members?.includes(user.uid)) {
     router.push(`/group/${groupId}`);
     return null;
   }
@@ -112,16 +123,26 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
               </div>
               <h2 className="text-2xl font-bold text-white mb-2">Oops!</h2>
               <p className="text-slate-400">{fetchError}</p>
-              <Link href="/dashboard" className="inline-block mt-8 bg-white/5 hover:bg-white/10 text-white font-medium py-3 px-6 rounded-xl transition-colors border border-white/10">
-                Back to Dashboard
-              </Link>
+              <div className="flex flex-col gap-3 mt-8">
+                {user && (
+                  <button 
+                    onClick={handleSwitchAccount} 
+                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
+                  >
+                    Switch Account
+                  </button>
+                )}
+                <Link href="/dashboard" className="bg-white/5 hover:bg-white/10 text-white font-medium py-3 px-6 rounded-xl transition-colors border border-white/10">
+                  Back to Dashboard
+                </Link>
+              </div>
             </div>
           ) : (
             <div>
               <h2 className="text-slate-400 font-medium mb-2 uppercase tracking-widest text-sm">You've been invited to</h2>
-              <h1 className="text-3xl font-extrabold text-white mb-4">{group.name}</h1>
-              {group.description && (
-                <p className="text-slate-400 mb-8">{group.description}</p>
+              <h1 className="text-3xl font-extrabold text-white mb-4">{group?.name}</h1>
+              {group?.description && (
+                <p className="text-slate-400 mb-8">{group?.description}</p>
               )}
               
               <button
