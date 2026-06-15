@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, doc, updateDoc, serverTimestamp, arrayUnion, Timestamp } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, serverTimestamp, arrayUnion, Timestamp, deleteDoc } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { getCurrencySymbol } from "@/lib/currency";
 
@@ -112,6 +112,61 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
     setShares(prev => ({ ...prev, [uid]: val }));
   };
 
+  const getImplicitValues = () => {
+    const numAmount = parseFloat(amount) || 0;
+    if (splitType === "EXACT") {
+      let totalEntered = 0;
+      let emptyCount = 0;
+      members.forEach(m => {
+        if (exactAmounts[m]) totalEntered += parseFloat(exactAmounts[m]) || 0;
+        else emptyCount++;
+      });
+      const remaining = Math.max(0, numAmount - totalEntered);
+      return emptyCount > 0 ? remaining / emptyCount : 0;
+    } else if (splitType === "PERCENTAGE") {
+      let totalEntered = 0;
+      let emptyCount = 0;
+      members.forEach(m => {
+        if (percentages[m]) totalEntered += parseFloat(percentages[m]) || 0;
+        else emptyCount++;
+      });
+      const remaining = Math.max(0, 100 - totalEntered);
+      return emptyCount > 0 ? remaining / emptyCount : 0;
+    }
+    return 0;
+  };
+
+  const getProjectedSplit = (uid: string) => {
+    const numAmount = parseFloat(amount) || 0;
+    if (splitType === "EXACT") {
+      return exactAmounts[uid] ? (parseFloat(exactAmounts[uid]) || 0) : getImplicitValues();
+    } else if (splitType === "PERCENTAGE") {
+      const p = percentages[uid] ? (parseFloat(percentages[uid]) || 0) : getImplicitValues();
+      return (p / 100) * numAmount;
+    } else {
+      let totalShares = 0;
+      members.forEach(m => totalShares += (parseFloat(shares[m] || "0") || 0));
+      if (totalShares === 0) return 0;
+      const s = parseFloat(shares[uid] || "0") || 0;
+      return (s / totalShares) * numAmount;
+    }
+  };
+
+  const handleDeleteExpense = async () => {
+    if (!expenseToEdit) return;
+    if (!confirm("Are you sure you want to delete this expense?")) return;
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, "expenses", expenseToEdit.id!), {
+        deletedAt: serverTimestamp()
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete expense.");
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!description.trim() || !amount) return;
@@ -148,30 +203,32 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
         
       } else if (splitType === "EXACT") {
         let totalExact = 0;
+        const implicit = getImplicitValues();
         splits = members.map(memberId => {
-          const val = parseFloat(exactAmounts[memberId] || "0");
+          const val = exactAmounts[memberId] ? (parseFloat(exactAmounts[memberId]) || 0) : implicit;
           totalExact += val;
+          rawInputsToSave[memberId] = exactAmounts[memberId] || implicit.toFixed(2);
           return { userId: memberId, amountOwed: val };
         });
         
-        if (Math.abs(totalExact - numAmount) > 0.01) {
+        if (Math.abs(totalExact - numAmount) > 0.02) {
           throw new Error(`Exact amounts must sum to the total amount. Currently: ${currencySymbol}${totalExact.toFixed(2)}`);
         }
-        rawInputsToSave = exactAmounts;
 
       } else if (splitType === "PERCENTAGE") {
         let totalPercentage = 0;
+        const implicit = getImplicitValues();
         splits = members.map(memberId => {
-          const p = parseFloat(percentages[memberId] || "0");
+          const p = percentages[memberId] ? (parseFloat(percentages[memberId]) || 0) : implicit;
           totalPercentage += p;
+          rawInputsToSave[memberId] = percentages[memberId] || implicit.toFixed(2);
           const val = numAmount * (p / 100);
           return { userId: memberId, amountOwed: val };
         });
-
-        if (Math.abs(totalPercentage - 100) > 0.01) {
-          throw new Error(`Percentages must sum to 100%. Currently: ${totalPercentage}%`);
+        
+        if (Math.abs(totalPercentage - 100) > 0.02) {
+          throw new Error("Percentages must sum to 100%.");
         }
-        rawInputsToSave = percentages;
       }
 
       const expenseData = {
@@ -287,23 +344,26 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
                       </div>
                       <span className="text-sm font-medium">{profiles[uid]?.displayName || profiles[uid]?.email || "Unknown User"}</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    {splitType === "EXACT" && <span className="text-slate-500 text-sm">{currencySymbol}</span>}
-                    {splitType === "SHARES" && <span className="text-slate-500 text-sm">x</span>}
-                    <input 
-                      type="number"
-                      step={splitType === "SHARES" ? "1" : "0.01"}
-                      min="0"
-                      placeholder="0"
-                      value={splitType === "EXACT" ? (exactAmounts[uid] || "") : splitType === "PERCENTAGE" ? (percentages[uid] || "") : (shares[uid] || "")}
-                      onChange={(e) => {
-                        if (splitType === "EXACT") handleExactChange(uid, e.target.value);
-                        else if (splitType === "PERCENTAGE") handlePercentageChange(uid, e.target.value);
-                        else handleShareChange(uid, e.target.value);
-                      }}
-                      className={`w-20 bg-slate-900 border border-white/10 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:border-emerald-500 ${noSpinnersClass}`}
-                    />
-                    {splitType === "PERCENTAGE" && <span className="text-slate-500 text-sm">%</span>}
+                  <div className="flex flex-col items-end">
+                    <div className="flex items-center gap-1">
+                      {splitType === "EXACT" && <span className="text-slate-500 text-sm">{currencySymbol}</span>}
+                      {splitType === "SHARES" && <span className="text-slate-500 text-sm">x</span>}
+                      <input 
+                        type="number"
+                        step={splitType === "SHARES" ? "1" : "0.01"}
+                        min="0"
+                        placeholder={splitType === "SHARES" ? "0" : getImplicitValues().toFixed(2)}
+                        value={splitType === "EXACT" ? (exactAmounts[uid] || "") : splitType === "PERCENTAGE" ? (percentages[uid] || "") : (shares[uid] || "")}
+                        onChange={(e) => {
+                          if (splitType === "EXACT") handleExactChange(uid, e.target.value);
+                          else if (splitType === "PERCENTAGE") handlePercentageChange(uid, e.target.value);
+                          else handleShareChange(uid, e.target.value);
+                        }}
+                        className={`w-20 bg-slate-900 border border-white/10 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:border-emerald-500 ${noSpinnersClass}`}
+                      />
+                      {splitType === "PERCENTAGE" && <span className="text-slate-500 text-sm">%</span>}
+                    </div>
+                    <span className="text-[10px] text-emerald-400 mt-0.5">{currencySymbol}{getProjectedSplit(uid).toFixed(2)}</span>
                   </div>
                 </div>
               ))}
@@ -317,6 +377,16 @@ export default function AddExpenseModal({ isOpen, onClose, groupId, members, pro
           </div>
 
           <div className="flex gap-3 mt-4">
+            {expenseToEdit && (
+              <button
+                type="button"
+                onClick={handleDeleteExpense}
+                disabled={loading}
+                className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-semibold py-3 px-4 rounded-xl transition-colors"
+              >
+                Delete
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

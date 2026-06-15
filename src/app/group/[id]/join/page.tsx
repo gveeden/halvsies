@@ -11,6 +11,8 @@ interface GroupData {
   name: string;
   description: string;
   members: string[];
+  pendingInvites?: string[];
+  joinRequests?: string[];
 }
 
 export default function JoinGroupPage(props: { params: Promise<{ id: string }> }) {
@@ -58,19 +60,27 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
     
     try {
       const groupRef = doc(db, "groups", groupId);
-      const updates: any = {
-        members: arrayUnion(user.uid)
-      };
-      if (user.email) {
-        updates.pendingInvites = arrayRemove(user.email.toLowerCase());
+      const groupDoc = await getDoc(groupRef);
+      if (!groupDoc.exists()) throw new Error("Group not found");
+      const groupData = groupDoc.data();
+      const isInvited = user.email && groupData.pendingInvites?.includes(user.email.toLowerCase());
+
+      if (isInvited) {
+        const updates: any = {
+          members: arrayUnion(user.uid)
+        };
+        if (user.email) {
+          updates.pendingInvites = arrayRemove(user.email.toLowerCase());
+        }
+        await updateDoc(groupRef, updates);
+        window.localStorage.removeItem('pendingGroupJoin');
+        router.push(`/group/${groupId}`);
+      } else {
+        await updateDoc(groupRef, {
+          joinRequests: arrayUnion(user.uid)
+        });
+        setFetchError("You have requested to join this group. The group members must approve your request.");
       }
-      await updateDoc(groupRef, updates);
-      
-      // Clear pending join just in case
-      window.localStorage.removeItem('pendingGroupJoin');
-      
-      // Redirect to the group
-      router.push(`/group/${groupId}`);
     } catch (err: any) {
       console.error(err);
       setFetchError("Failed to join the group. Make sure you are logged in.");
@@ -98,6 +108,40 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
   if (user && group?.members?.includes(user.uid)) {
     router.push(`/group/${groupId}`);
     return null;
+  }
+
+  // If already requested to join
+  if (user && group?.joinRequests?.includes(user.uid)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4 relative overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[20%] left-[20%] w-[40%] h-[40%] rounded-full bg-amber-500/10 blur-[120px]" />
+        </div>
+
+        <div className="w-full max-w-md relative z-10 text-center">
+          <Link href="/" className="inline-flex items-center gap-2 mb-10 justify-center group">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center font-bold text-xl shadow-lg shadow-emerald-500/30 group-hover:scale-105 transition-transform">
+              H
+            </div>
+          </Link>
+
+          <div className="bg-slate-900 border border-white/10 rounded-3xl p-10 shadow-2xl backdrop-blur-xl">
+            <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/20">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Request Pending</h2>
+            <p className="text-slate-400">You have requested to join <strong>{group.name}</strong>. Please wait for an existing member to approve your request.</p>
+            <div className="flex flex-col gap-3 mt-8">
+              <Link href="/dashboard" className="bg-white/5 hover:bg-white/10 text-white font-medium py-3 px-6 rounded-xl transition-colors border border-white/10">
+                Back to Dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

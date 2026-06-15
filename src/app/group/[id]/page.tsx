@@ -174,7 +174,8 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
         id: doc.id,
         ...doc.data()
       })) as Expense[];
-      setExpenses(expensesData);
+      const activeExpenses = expensesData.filter(e => !(e as any).deletedAt);
+      setExpenses(activeExpenses);
       setExpensesLoading(false);
     }, (error) => {
       console.error("Error fetching expenses:", error);

@@ -58,7 +58,8 @@ export default function DashboardPage() {
         id: doc.id,
         ...doc.data()
       })) as Group[];
-      setGroups(groupsData);
+      const activeGroups = groupsData.filter(g => !(g as any).deletedAt);
+      setGroups(activeGroups);
       setGroupsLoading(false);
     }, (error) => {
       console.error("Error fetching groups:", error);

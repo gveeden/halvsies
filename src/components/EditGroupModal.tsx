@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import QRCode from "react-qr-code";
@@ -24,6 +24,7 @@ interface EditGroupModalProps {
   members?: string[];
   profiles?: Record<string, UserProfile>;
   pendingInvites?: string[];
+  joinRequests?: string[];
 }
 
 export default function EditGroupModal({ 
@@ -36,7 +37,8 @@ export default function EditGroupModal({
   initialTab = "settings",
   members = [],
   profiles = {},
-  pendingInvites = []
+  pendingInvites = [],
+  joinRequests = []
 }: EditGroupModalProps) {
   const [activeTab, setActiveTab] = useState<"settings" | "members">(initialTab);
   const [name, setName] = useState(currentName);
@@ -97,7 +99,9 @@ export default function EditGroupModal({
     
     setLoading(true);
     try {
-      await deleteDoc(doc(db, "groups", groupId));
+      await updateDoc(doc(db, "groups", groupId), {
+        deletedAt: serverTimestamp()
+      });
       router.push("/dashboard");
     } catch (err: any) {
       setError(err.message || "Failed to delete group.");
@@ -379,6 +383,53 @@ export default function EditGroupModal({
                       </button>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {joinRequests.length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold text-amber-400 mb-3 uppercase tracking-wider">Join Requests</h3>
+                <div className="space-y-2">
+                  {joinRequests.map(uid => {
+                    const profile = profiles[uid];
+                    return (
+                      <div key={uid} className="flex items-center justify-between bg-slate-800/50 rounded-lg p-3 border border-amber-500/20 gap-2 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                            {profile?.displayName?.[0] || profile?.email?.[0] || "U"}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-white truncate">{profile?.displayName || "Unknown User"}</div>
+                            <div className="text-xs text-slate-500 truncate">{profile?.email}</div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button
+                            onClick={async () => {
+                              await updateDoc(doc(db, "groups", groupId), {
+                                joinRequests: arrayRemove(uid),
+                                members: arrayUnion(uid)
+                              });
+                            }}
+                            className="text-xs bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 px-2 py-1 rounded transition-colors border border-emerald-500/20"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={async () => {
+                              await updateDoc(doc(db, "groups", groupId), {
+                                joinRequests: arrayRemove(uid)
+                              });
+                            }}
+                            className="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 px-2 py-1 rounded transition-colors border border-red-500/20"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
