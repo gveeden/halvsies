@@ -18,6 +18,7 @@ interface Group {
   members: string[];
   currency?: string;
   pendingInvites?: string[];
+  joinRequests?: string[];
 }
 
 interface Split {
@@ -129,11 +130,12 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
         }
         setGroup(groupData);
 
-        // Fetch profiles for all members
+        // Fetch profiles for all members and join requests
         const fetchProfiles = async () => {
           const profilesData: Record<string, UserProfile> = {};
+          const usersToFetch = [...new Set([...groupData.members, ...(groupData.joinRequests || [])])];
           await Promise.all(
-            groupData.members.map(async (uid) => {
+            usersToFetch.map(async (uid) => {
               const userRef = doc(db, "users", uid);
               const userSnap = await getDoc(userRef);
               if (userSnap.exists()) {
@@ -736,6 +738,7 @@ export default function GroupPage(props: { params: Promise<{ id: string }> }) {
         members={group.members}
         profiles={profiles}
         pendingInvites={group.pendingInvites || []}
+        joinRequests={group.joinRequests || []}
       />
     </div>
   );

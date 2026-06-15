@@ -14,6 +14,8 @@ interface Group {
   name: string;
   description: string;
   members: string[];
+  pendingInvites?: string[];
+  joinRequests?: string[];
 }
 
 export default function DashboardPage() {

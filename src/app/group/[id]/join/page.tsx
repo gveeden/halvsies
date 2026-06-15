@@ -79,7 +79,7 @@ export default function JoinGroupPage(props: { params: Promise<{ id: string }> }
         await updateDoc(groupRef, {
           joinRequests: arrayUnion(user.uid)
         });
-        setFetchError("You have requested to join this group. The group members must approve your request.");
+        setGroup(prev => prev ? { ...prev, joinRequests: [...(prev.joinRequests || []), user.uid] } : prev);
       }
     } catch (err: any) {
       console.error(err);
