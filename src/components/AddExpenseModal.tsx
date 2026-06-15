@@ -25,6 +25,8 @@ interface ExpenseData {
   splitType: string;
   splits: Split[];
   rawInputs?: any; // To recover shares/percentages if we start saving them
+  date?: any;
+  createdAt?: any;
 }
 
 interface ExpenseModalProps {
